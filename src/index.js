@@ -1,32 +1,4 @@
 import * as tf from '@tensorflow/tfjs';
-
-import {
-  non_max_suppression,
-  yolo_boxes_to_corners,
-  yolo_head,
-  yolo_filter_boxes,
-  YOLO_ANCHORS,
-} from './postprocess';
-import class_names from './coco_classes';
-
-const INPUT_DIM = 416;
-
-const DEFAULT_FILTER_BOXES_THRESHOLD = 0.01;
-const DEFAULT_IOU_THRESHOLD = 0.4;
-const DEFAULT_CLASS_PROB_THRESHOLD = 0.4
-const DEFAULT_MODEL_LOCATION =
-  'https://raw.githubusercontent.com/MikeShi42/yolo-tiny-tfjs/master/model2.json';
-
-export async function downloadModel(url = DEFAULT_MODEL_LOCATION) {
-  return await tf.loadModel(url);
-}
-
-export default async function yolo(
-  input,
-  model,
-  classProbThreshold = DEFAULT_CLASS_PROB_THRESHOLD,
-  iouThreshold = DEFAULT_IOU_THRESHOLD,
-import * as tf from '@tensorflow/tfjs';
 import yolo, { downloadModel } from 'tfjs-yolo-tiny';
 
 import { Webcam } from './webcam';
