@@ -26,73 +26,104 @@ export default async function yolo(
   model,
   classProbThreshold = DEFAULT_CLASS_PROB_THRESHOLD,
   iouThreshold = DEFAULT_IOU_THRESHOLD,
-  filterBoxesThreshold = DEFAULT_FILTER_BOXES_THRESHOLD
-) {
-  const [all_boxes, box_confidence, box_class_probs] = tf.tidy(() => {
-    const activation = model.predict(input);
+import * as tf from '@tensorflow/tfjs';
+import yolo, { downloadModel } from 'tfjs-yolo-tiny';
 
-    const [box_xy, box_wh, box_confidence, box_class_probs ] =
-      yolo_head(activation, YOLO_ANCHORS, 80);
+import { Webcam } from './webcam';
 
-    const all_boxes = yolo_boxes_to_corners(box_xy, box_wh);
+let model;
+const webcam = new Webcam(document.getElementById('webcam'));
 
-    return [all_boxes, box_confidence, box_class_probs];
-  });
+(async function main() {
+  try {
+    ga();
+    model = await downloadModel();
 
-  let [boxes, scores, classes] = await yolo_filter_boxes(
-    all_boxes, box_confidence, box_class_probs, filterBoxesThreshold);
+    alert("Just a heads up! We'll ask to access your webcam so that we can " +
+      "detect objects in semi-real-time. \n\nDon't worry, we aren't sending " +
+      "any of your images to a remote server, all the ML is being done " +
+      "locally on device, and you can check out our source code on Github.");
 
-  // If all boxes have been filtered out
-  if (boxes == null) {
-    return [];
+    await webcam.setup();
+
+    doneLoading();
+    run();
+  } catch(e) {
+    console.error(e);
+    showError();
   }
+})();
 
-  const width = tf.scalar(INPUT_DIM);
-  const height = tf.scalar(INPUT_DIM);
+async function run() {
+  while (true) {
+    clearRects();
 
-  const image_dims = tf.stack([height, width, height, width]).reshape([1,4]);
+    const inputImage = webcam.capture();
 
-  boxes = tf.mul(boxes, image_dims);
+    const t0 = performance.now();
 
-  const [ pre_keep_boxes_arr, scores_arr ] = await Promise.all([
-    boxes.data(), scores.data(),
-  ]);
+    const boxes = await yolo(inputImage, model);
 
-  const [ keep_indx, boxes_arr, keep_scores ] = non_max_suppression(
-    pre_keep_boxes_arr,
-    scores_arr,
-    iouThreshold,
-  );
+    const t1 = performance.now();
+    console.log("YOLO inference took " + (t1 - t0) + " milliseconds.");
 
-  const classes_indx_arr = await classes.gather(tf.tensor1d(keep_indx)).data();
+    boxes.forEach(box => {
+      const {
+        top, left, bottom, right, classProb, className,
+      } = box;
 
-  const results = [];
+      drawRect(left, top, right-left, bottom-top,
+        `${className} Confidence: ${Math.round(classProb * 100)}%`)
+    });
 
-  classes_indx_arr.forEach((class_indx, i) => {
-    const classProb = keep_scores[i];
-    if (classProb < classProbThreshold) {
-      return;
-    }
+    await tf.nextFrame();
+  }
+}
 
-    const className = class_names[class_indx];
-    let [top, left, bottom, right] = boxes_arr[i];
+const webcamElem = document.getElementById('webcam-wrapper');
 
-    top = Math.max(0, top);
-    left = Math.max(0, left);
-    bottom = Math.min(416, bottom);
-    right = Math.min(416, right);
+function drawRect(x, y, w, h, text = '', color = 'red') {
+  const rect = document.createElement('div');
+  rect.classList.add('rect');
+  rect.style.cssText = `top: ${y}; left: ${x}; width: ${w}; height: ${h}; border-color: ${color}`;
 
-    const resultObj = {
-      className,
-      classProb,
-      bottom,
-      top,
-      left,
-      right,
-    };
+  const label = document.createElement('div');
+  label.classList.add('label');
+  label.innerText = text;
+  rect.appendChild(label);
 
-    results.push(resultObj);
-  });
+  webcamElem.appendChild(rect);
+}
 
-  return results;
+function clearRects() {
+  const rects = document.getElementsByClassName('rect');
+  while(rects[0]) {
+    rects[0].parentNode.removeChild(rects[0]);
+  }
+}
+
+function doneLoading() {
+  const elem = document.getElementById('loading-message');
+  elem.style.display = 'none';
+
+  const successElem = document.getElementById('success-message');
+  successElem.style.display = 'block';
+
+  const webcamElem = document.getElementById('webcam-wrapper');
+  webcamElem.style.display = 'flex';
+}
+
+function showError() {
+  const elem = document.getElementById('error-message');
+  elem.style.display = 'block';
+  doneLoading();
+}
+
+function ga() {
+  if (process.env.UA) {
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', process.env.UA);
+  }
 }
